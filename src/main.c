@@ -22,6 +22,11 @@ typedef struct {
 typedef struct {
     double x;
     double y;
+} boundingBox;
+
+typedef struct {
+    double x;
+    double y;
     double z;
     double w;
 } clipCoords;
@@ -103,7 +108,7 @@ int min(int a, int b, int c) {
     return _min < c ? _min : c;
 }
 
-int MaxFragmentsInTriangle(windowCoords wc[3]) {
+int MaxFragmentsInTriangle(windowCoords wc[3], boundingBox *bb) {
     int minX, maxX, minY, maxY = 0;
 
     minX = min(wc[0].x, wc[1].x, wc[2].x);
@@ -111,11 +116,14 @@ int MaxFragmentsInTriangle(windowCoords wc[3]) {
     minY = min(wc[0].y, wc[1].y, wc[2].y);
     maxY = max(wc[0].y, wc[1].y, wc[2].y);
 
-    return (maxX - minX) * (maxY - minY);
+    bb->x = maxX - minX;
+    bb->y = maxY - minY;
+
+    return bb->x * bb->y;
 }
 
-int ScanConversion(windowCoords *wc, fragment *frags) {
-    // scan convert a trinangle (3 window coordinates -> 1 triangle) -> return a list of fragments
+int ScanConversion(windowCoords *wc, fragment *frags, boundingBox *bb) {
+    // scan convert a triangle (3 window coordinates -> 1 triangle)
     int width = tb_width();
     int height = tb_height();
 
@@ -127,11 +135,13 @@ int ScanConversion(windowCoords *wc, fragment *frags) {
 
     for (int x = 0; x < width; x++) {
         for (int y = 0; y < height; y++) {
+            double det = ((wc2.y-wc3.y)*(wc1.x-wc3.x)+(wc3.x-wc2.x)*(wc1.y-wc3.y));
+
             double lambda1 = (
-                ((wc2.y-wc3.y)*(x-wc3.x)+(wc3.x-wc2.x)*(y-wc3.y)) / ((wc2.y-wc3.y)*(wc1.x-wc3.x)+(wc3.x-wc2.x)*(wc1.y-wc3.y))
+                ((wc2.y-wc3.y)*(x-wc3.x)+(wc3.x-wc2.x)*(y-wc3.y)) / det
             );
             double lambda2 = (
-                ((wc3.y-wc1.y)*(x-wc3.x)+(wc1.x-wc3.x)*(y-wc3.y)) / ((wc2.y-wc3.y)*(wc1.x-wc3.x)+(wc3.x-wc2.x)*(wc1.y-wc3.y))
+                ((wc3.y-wc1.y)*(x-wc3.x)+(wc1.x-wc3.x)*(y-wc3.y)) / det
             );
             double lambda3 = (
                 1 - lambda1 - lambda2
@@ -183,13 +193,16 @@ int main(void) {
         },
     };
 
+    windowCoords finalWC[3];
+    boundingBox box;
+
     // main loop
     while (running == 1) {
         tb_clear();
         // --- rasterisation stuff ---
-        for (int i = 0; i < 1; i++) {
-            windowCoords *finalWC = malloc(3 * sizeof(windowCoords));
 
+
+        for (int i = 0; i < 1; i++) {
             for (int v = 0; v < 3; v++) {
                 finalWC[v] = WindowTransformation(
                     NormalizeDeviceCoordinates(
@@ -198,13 +211,12 @@ int main(void) {
                 );
             }
 
-            fragment *frags = malloc(MaxFragmentsInTriangle(finalWC) * sizeof(fragment));
+            fragment *frags = malloc(MaxFragmentsInTriangle(finalWC, &box) * sizeof(fragment));
 
-            int count = ScanConversion(finalWC, frags);
+            int count = ScanConversion(finalWC, frags, &box);
 
             FragmentWriting(frags, count);
 
-            free(finalWC);
             free(frags);
         }
 
