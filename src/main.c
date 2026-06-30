@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define TB_IMPL
@@ -37,6 +38,7 @@ typedef struct {
 double perspectiveMatrix[4][4];
 
 void InitPerspectiveMatrix() {
+    // Initialize the perspective matrix to use in Clip Space Transformation
     double fov = 70.0 * PI / 180.0; // Convert fov from degrees to radians
     double aspect = (double)tb_width() / tb_height();
 
@@ -79,6 +81,7 @@ ndCoords NormalizeDeviceCoordinates(clipCoords cc) {
     return ret;
 }
 
+
 windowCoords WindowTransformation(ndCoords nc) {
     // Convert normalized device coordinates to window coordinates -> return window coordinates
     windowCoords ret = {
@@ -89,13 +92,83 @@ windowCoords WindowTransformation(ndCoords nc) {
     return ret;
 }
 
-fragmentList ScanConversion(windowCoords wc[3]) {
-    // scan convert a trinangle (3 window coordinates -> 1 triangle) -> return a pointer to a list of fragments
-    // CALL FREE() AFTER USING FRAGMENTS
+int max(int a, int b, int c) {
+    int _max = a > b ? a : b;
+    return _max > c ? _max : c;
 }
 
-void FragmentWriting(fragment *fg) {
-    // write each fragment to the screen with termbox
+int min(int a, int b, int c) {
+    int _min = a < b ? a : b;
+    return _min < c ? _min : c;
+}
+
+int MaxFragmentsInTriangle(windowCoords wc[3]) {
+    int minX, maxX, minY, maxY = 0;
+
+    minX = min(wc[0].x, wc[1].x, wc[2].x);
+    maxX = max(wc[0].x, wc[1].x, wc[2].x);
+    minY = min(wc[0].y, wc[1].y, wc[2].y);
+    maxY = max(wc[0].y, wc[1].y, wc[2].y);
+
+    return (maxX - minX) * (maxY - minY);
+}
+
+fragmentList ScanConversion(windowCoords *wc) {
+    // scan convert a trinangle (3 window coordinates -> 1 triangle) -> return a list of fragments
+    int width = tb_width();
+    int height = tb_height();
+
+    windowCoords wc1 = wc[0];
+    windowCoords wc2 = wc[1];
+    windowCoords wc3 = wc[2];
+
+    fragmentList ret = {
+        malloc(MaxFragmentsInTriangle(wc) * sizeof(fragment)),
+        0,
+    };
+
+    for (int x = 0; x < width; x++) {
+        for (int y = 0; y < height; y++) {
+            double lambda1 = (
+                ((wc2.y-wc3.y)*(x-wc3.x)+(wc3.x-wc2.x)*(y-wc3.y)) / ((wc2.y-wc3.y)*(wc1.x-wc3.x)+(wc3.x-wc2.x)*(wc1.y-wc3.y))
+            );
+            double lambda2 = (
+                ((wc3.y-wc1.y)*(x-wc3.x)+(wc1.x-wc3.x)*(y-wc3.y)) / ((wc2.y-wc3.y)*(wc1.x-wc3.x)+(wc3.x-wc2.x)*(wc1.y-wc3.y))
+            );
+            double lambda3 = (
+                1 - lambda1 - lambda2
+            );
+
+            if (lambda1 >= 0 && lambda2 >= 0 && lambda3 >= 0) {
+                ret.data[ret.count] = (fragment){
+                    x,
+                    y,
+                    wc1.z * lambda1 + wc2.z * lambda2 + wc3.z * lambda3,
+                };
+                ret.count++;
+            }
+        }
+    }
+    return ret;
+}
+
+char MapDepthToChar(double depth) {
+    // Map depth value to ascii character
+    // @ # : .
+    if (depth < 0.25) { return '@'; }
+    else if (depth < 0.50) { return '#'; }
+    else if (depth < 0.75) { return ':'; }
+    return '.';
+}
+
+void FragmentWriting(fragmentList *fl) {
+    // write each fragment to the screen with termbox2
+    for (int f = 0; f < fl->count; f++) {
+        uint32_t unicode;
+        char ch = '#';
+        tb_utf8_char_to_unicode(&unicode, &ch);
+        tb_set_cell(fl->data[f].x, fl->data[f].y, unicode, TB_WHITE, 0);
+    }
 }
 
 int main(void) {
@@ -107,28 +180,38 @@ int main(void) {
 
     InitPerspectiveMatrix();
 
-    triangle tri = {
+    triangle triangles[] = {
+        // Camera is staring down the -Z axis
+        //   -> z = -0.2 : depth = 0; (Near clip)
+        //   -> z = -4.0 : depth = 1; (Far clip)
         {
-            {-1.0, -1.0, -2.0},
-            {1.0, -1.0, -2.0},
-            {0.0, 1.0, -2.0},
-        }
+            {
+                {-1.0, -1.0, -2.0},
+                {1.0, -1.0, -2.0},
+                {0.0, 1.0, -2.0},
+            }
+        },
     };
 
     // main loop
     while (running == 1) {
         tb_clear();
         // --- rasterisation stuff ---
-        windowCoords finalWC[3];
+        for (int i = 0; i < 1; i++) {
+            windowCoords *finalWC = malloc(3 * sizeof(windowCoords));
 
-        for (int v = 0; v < 3; v++) {
-            finalWC[v] = WindowTransformation(
-                NormalizeDeviceCoordinates(
-                    ClipSpaceTransform(tri.vertices[v])
-                )
-            );
+            for (int v = 0; v < 3; v++) {
+                finalWC[v] = WindowTransformation(
+                    NormalizeDeviceCoordinates(
+                        ClipSpaceTransform(triangles[i].vertices[v])
+                    )
+                );
+            }
+            fragmentList fragments = ScanConversion(finalWC);
 
-            //printf("Vertex %d -> X: %f | Y: %f | Z: %f\n", v, finalWC[v].x, finalWC[v].y, finalWC[v].z);
+            FragmentWriting(&fragments);
+
+            free(finalWC);
         }
 
         tb_present();
