@@ -8,7 +8,7 @@
 
 int width, height;
 
-int wireframeMode = 0; // 0 -> off | 1 -> on
+int wireframeMode = 1; // 0 -> off | 1 -> on
 
 double perspectiveMatrix[4][4];
 
@@ -64,6 +64,10 @@ Vertex RotateVertexAroundAxis(Vertex vx, double angle, RotationAxis axis) {
         default:
             return vx;
     }
+}
+
+Vertex ThreeAxisRotation(Vertex vx, double angle) {
+    return RotateVertexAroundAxis(RotateVertexAroundAxis(RotateVertexAroundAxis(vx, angle, Z_AXIS), angle, Y_AXIS), angle, X_AXIS);
 }
 
 Vertex TranslateVertexAlongAxis(Vertex vx, double n, MovementAxis axis) {
@@ -251,9 +255,9 @@ int main(void) {
         ClearDepthBuffer(screenCells);
 
         for (int i = 0; i < triangleCount; i++) {
-            ClipCoords c0 = ClipSpaceTransform(TranslateVertexAlongAxis(RotateVertexAroundAxis(mesh[i].vertices[0], angle * PI / 180.0, Y_AXIS), -1.5, Z_AXIS));
-            ClipCoords c1 = ClipSpaceTransform(TranslateVertexAlongAxis(RotateVertexAroundAxis(mesh[i].vertices[1], angle * PI / 180.0, Y_AXIS), -1.5, Z_AXIS));
-            ClipCoords c2 = ClipSpaceTransform(TranslateVertexAlongAxis(RotateVertexAroundAxis(mesh[i].vertices[2], angle * PI / 180.0, Y_AXIS), -1.5, Z_AXIS));
+            ClipCoords c0 = ClipSpaceTransform(TranslateVertexAlongAxis(ThreeAxisRotation(mesh[i].vertices[0], angle * PI / 180.0), -2.0, Z_AXIS));
+            ClipCoords c1 = ClipSpaceTransform(TranslateVertexAlongAxis(ThreeAxisRotation(mesh[i].vertices[1], angle * PI / 180.0), -2.0, Z_AXIS));
+            ClipCoords c2 = ClipSpaceTransform(TranslateVertexAlongAxis(ThreeAxisRotation(mesh[i].vertices[2], angle * PI / 180.0), -2.0, Z_AXIS));
 
             if(c0.w <= 0.0 || c1.w <= 0.0 || c2.w <= 0.0) {
                 continue;
@@ -282,7 +286,7 @@ int main(void) {
             running = 0;
         }
 
-        angle++;
+        angle += 0.5;
     }
 
     tb_shutdown();
