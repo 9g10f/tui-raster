@@ -1,5 +1,5 @@
 out = -o tui-raster.o
-flags = -lm
+flags = -lm -D_XOPEN_SOURCE=700 -D_DEFAULT_SOURCE
 
 build: src/main.c src/obj-loader.c
 	gcc src/main.c src/obj-loader.c src/matrix-math.c $(out) $(flags)
